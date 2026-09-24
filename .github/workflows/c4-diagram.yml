@@ -90,12 +90,8 @@ jobs:
               max_tokens: 2000
             }')
 
-          # Determine the correct endpoint path
-          if echo "$AZURE_AI_FOUNDRY_ENDPOINT" | grep -q "openai.azure.com"; then
-            API_URL="${AZURE_AI_FOUNDRY_ENDPOINT}/chat/completions?api-version=2024-05-01-preview"
-          else
-            API_URL="${AZURE_AI_FOUNDRY_ENDPOINT}/chat/completions"
-          fi
+          # Always include api-version — required by Azure OpenAI, ignored by Foundry serverless
+          API_URL="${AZURE_AI_FOUNDRY_ENDPOINT}/chat/completions?api-version=2024-05-01-preview"
 
           echo "Calling: $API_URL"
           echo "Model:   $AZURE_AI_MODEL"

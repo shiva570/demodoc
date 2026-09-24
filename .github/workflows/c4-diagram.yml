@@ -52,12 +52,9 @@ jobs:
       - name: Generate C4 diagram via Azure AI Foundry
         env:
           AZURE_AI_FOUNDRY_TOKEN: ${{ secrets.AZURE_AI_FOUNDRY_TOKEN }}
-          # Set this secret to your Azure AI Foundry project endpoint, e.g.:
-          # https://<your-project>.inference.ai.azure.com
-          # or an Azure OpenAI endpoint:
-          # https://<resource>.openai.azure.com/openai/deployments/<deployment>
           AZURE_AI_FOUNDRY_ENDPOINT: ${{ secrets.AZURE_AI_FOUNDRY_ENDPOINT }}
-          AZURE_AI_MODEL: ${{ vars.AZURE_AI_MODEL || 'gpt-4o-mini' }}
+          AZURE_AI_MODEL: ${{ vars.AZURE_AI_MODEL || 'gpt-5-mini' }}
+          AZURE_API_VERSION: "2025-08-07"
         run: |
           CONTEXT=$(cat /tmp/context.txt)
 
@@ -90,8 +87,7 @@ jobs:
               max_tokens: 2000
             }')
 
-          # Always include api-version — required by Azure OpenAI, ignored by Foundry serverless
-          API_URL="${AZURE_AI_FOUNDRY_ENDPOINT}/chat/completions?api-version=2024-05-01-preview"
+          API_URL="${AZURE_AI_FOUNDRY_ENDPOINT}/chat/completions?api-version=${AZURE_API_VERSION}"
 
           echo "Calling: $API_URL"
           echo "Model:   $AZURE_AI_MODEL"

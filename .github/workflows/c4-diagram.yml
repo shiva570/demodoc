@@ -53,8 +53,9 @@ jobs:
         env:
           AZURE_AI_FOUNDRY_TOKEN: ${{ secrets.AZURE_AI_FOUNDRY_TOKEN }}
           AZURE_AI_FOUNDRY_ENDPOINT: ${{ secrets.AZURE_AI_FOUNDRY_ENDPOINT }}
-          AZURE_AI_MODEL: ${{ vars.AZURE_AI_MODEL || 'gpt-5-mini' }}
-          AZURE_API_VERSION: "2025-08-07"
+          AZURE_AI_MODEL: "gpt-5-mini"
+          # services.ai.azure.com uses /models/chat/completions with this api-version
+          AZURE_API_VERSION: "2024-05-01-preview"
         run: |
           CONTEXT=$(cat /tmp/context.txt)
 
@@ -87,7 +88,8 @@ jobs:
               max_tokens: 2000
             }')
 
-          API_URL="${AZURE_AI_FOUNDRY_ENDPOINT}/chat/completions?api-version=${AZURE_API_VERSION}"
+          # services.ai.azure.com uses /models/chat/completions (not /chat/completions)
+          API_URL="${AZURE_AI_FOUNDRY_ENDPOINT}/models/chat/completions?api-version=${AZURE_API_VERSION}"
 
           echo "Calling: $API_URL"
           echo "Model:   $AZURE_AI_MODEL"

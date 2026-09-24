@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet new *)",
+      "Bash(dotnet sln *)",
+      "Bash(dotnet build *)",
+      "Bash(chmod +x *)",
+      "Bash(ASPNETCORE_URLS=\"http://localhost:5001\" dotnet run --project src/UserService --no-build)",
+      "Bash(ASPNETCORE_URLS=\"http://localhost:5002\" dotnet run --project src/ProductService --no-build)",
+      "Bash(ASPNETCORE_URLS=\"http://localhost:5004\" dotnet run --project src/PaymentService --no-build)",
+      "Bash(ASPNETCORE_URLS=\"http://localhost:5005\" dotnet run --project src/NotificationService --no-build)",
+      "Bash(curl -s http://localhost:5001/health)",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s http://localhost:5004/health)",
+      "Bash(kill %1 %2 %3 %4)",
+      "Bash(curl -s \"http://localhost:5005/notifications?userId=11111111-0000-0000-0000-000000000001\")",
+      "Bash(kill %1 %2 %3 %4 %5)",
+      "Bash(curl -s \"http://localhost:5005/notifications\")",
+      "Bash(curl -s \"http://localhost:5002/products/22222222-0000-0000-0000-000000000001\")"
+    ]
+  }
+}

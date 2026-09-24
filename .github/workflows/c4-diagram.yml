@@ -1,0 +1,138 @@
+name: C4 Diagram
+
+on:
+  push:
+    branches: ["feature/*", "main"]
+
+permissions:
+  contents: write
+
+jobs:
+  update-diagram:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gather C# project structure
+        run: |
+          # Collect .cs source files (exclude bin/obj/test)
+          TREE=$(find . -type f -name "*.cs" \
+            | grep -vE "(bin/|obj/|\.Test\.|Test\.cs|\.Designer\.cs)" \
+            | head -150 \
+            | sort)
+
+          # Collect .csproj / .slnx / .sln project files
+          BUILD=$(find . -maxdepth 4 \( -name "*.csproj" -o -name "*.sln" -o -name "*.slnx" \) \
+            -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null | head -500)
+
+          # Collect appsettings to reveal inter-service URLs
+          SETTINGS=$(find . -name "appsettings*.json" \
+            ! -path "*/bin/*" ! -path "*/obj/*" \
+            -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null | head -200)
+
+          # Collect Program.cs files (entry points, routes, DI registrations)
+          PROGRAMS=$(find . -name "Program.cs" ! -path "*/bin/*" ! -path "*/obj/*" \
+            -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null | head -400)
+
+          # Write to temp file to avoid env-var size limits
+          cat > /tmp/context.txt <<CONTEXT
+          C# Source files:
+          $TREE
+
+          Build / project files (dependencies, project references):
+          $BUILD
+
+          appsettings (inter-service URLs, external systems):
+          $SETTINGS
+
+          Program.cs files (routes, DI, HTTP clients):
+          $PROGRAMS
+          CONTEXT
+
+      - name: Generate C4 diagram via Azure AI Foundry
+        env:
+          AZURE_AI_FOUNDRY_TOKEN: ${{ secrets.AZURE_AI_FOUNDRY_TOKEN }}
+          # Set this secret to your Azure AI Foundry project endpoint, e.g.:
+          # https://<your-project>.inference.ai.azure.com
+          # or an Azure OpenAI endpoint:
+          # https://<resource>.openai.azure.com/openai/deployments/<deployment>
+          AZURE_AI_FOUNDRY_ENDPOINT: ${{ secrets.AZURE_AI_FOUNDRY_ENDPOINT }}
+          AZURE_AI_MODEL: ${{ vars.AZURE_AI_MODEL || 'gpt-4o-mini' }}
+        run: |
+          CONTEXT=$(cat /tmp/context.txt)
+
+          PROMPT=$(cat <<'EOF'
+          You are a software architect. Analyze the following .NET C# microservices codebase and generate a Mermaid C4Container diagram.
+
+          Rules:
+          - Identify each microservice as a Container (use the project/folder name).
+          - Identify the API Gateway and show routing arrows to downstream services.
+          - Identify databases or in-memory stores referenced per service.
+          - Identify external systems (payment gateways, email providers, SMS, etc.).
+          - Show all synchronous HTTP calls between services as labeled arrows (e.g. "reserves stock", "processes payment").
+          - Use C4Container syntax with ContainerDb for databases and Person for users.
+          - Output ONLY the Mermaid code block, nothing else.
+          EOF
+          )
+
+          FULL_PROMPT="$PROMPT
+
+          Codebase:
+          $CONTEXT"
+
+          # Build the JSON payload
+          PAYLOAD=$(jq -n \
+            --arg model "$AZURE_AI_MODEL" \
+            --arg prompt "$FULL_PROMPT" \
+            '{
+              model: $model,
+              messages: [{role: "user", content: $prompt}],
+              max_tokens: 2000
+            }')
+
+          # Determine the correct endpoint path
+          # Azure AI Foundry (serverless / managed inference) uses /chat/completions
+          # Azure OpenAI uses /chat/completions?api-version=...
+          if echo "$AZURE_AI_FOUNDRY_ENDPOINT" | grep -q "openai.azure.com"; then
+            API_URL="${AZURE_AI_FOUNDRY_ENDPOINT}/chat/completions?api-version=2024-05-01-preview"
+          else
+            API_URL="${AZURE_AI_FOUNDRY_ENDPOINT}/chat/completions"
+          fi
+
+          RESPONSE=$(echo "$PAYLOAD" | curl -sf "$API_URL" \
+            -H "Authorization: Bearer $AZURE_AI_FOUNDRY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d @-)
+
+          if [ $? -ne 0 ]; then
+            echo "ERROR: Failed to call Azure AI Foundry endpoint: $API_URL"
+            exit 1
+          fi
+
+          DIAGRAM=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
+
+          if [ -z "$DIAGRAM" ]; then
+            echo "ERROR: No diagram content returned. Response:"
+            echo "$RESPONSE" | jq .
+            exit 1
+          fi
+
+          mkdir -p docs
+          cat > docs/c4-diagram.md <<DOC
+          # C4 Container Diagram
+
+          > Auto-generated on $(date -u +"%Y-%m-%d %H:%M UTC") from commit \`${{ github.sha }}\`
+
+          $DIAGRAM
+          DOC
+
+          echo "Diagram written to docs/c4-diagram.md"
+          cat docs/c4-diagram.md
+
+      - name: Commit diagram
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/c4-diagram.md
+          git diff --cached --quiet || git commit -m "docs: update C4 diagram [skip ci]"
+          git push

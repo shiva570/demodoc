@@ -83,7 +83,7 @@ jobs:
             '{
               model: $model,
               input: $prompt,
-              max_output_tokens: 2000
+              max_output_tokens: 8000
             }')
 
           echo "Calling: $API_URL"
@@ -104,22 +104,26 @@ jobs:
 
           RESPONSE=$(cat /tmp/api_response.json)
 
-          echo "=== RAW RESPONSE (for debugging) ==="
-          echo "$RESPONSE" | jq .
-          echo "===================================="
+          STATUS=$(echo "$RESPONSE" | jq -r '.status // "unknown"')
+          echo "Response status: $STATUS"
 
-          # Responses API: output[0].content[0].text
-          # Fallback to chat completions format in case endpoint behaves differently
+          if [ "$STATUS" = "incomplete" ]; then
+            echo "ERROR: Response incomplete — model ran out of tokens."
+            echo "Usage: $(echo "$RESPONSE" | jq '.usage')"
+            exit 1
+          fi
+
+          # Responses API output path: output[].content[].text (type=output_text)
           DIAGRAM=$(echo "$RESPONSE" | jq -r '
+            (.output[] | select(.type == "message") | .content[] | select(.type == "output_text") | .text) //
             .output[0].content[0].text //
-            .output[0].content[0] //
-            .output[0].text //
             .choices[0].message.content //
             empty
           ')
 
           if [ -z "$DIAGRAM" ]; then
-            echo "ERROR: Could not parse diagram from response above."
+            echo "ERROR: Could not parse diagram. Raw response:"
+            echo "$RESPONSE" | jq .
             exit 1
           fi
 

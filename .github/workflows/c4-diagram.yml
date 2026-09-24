@@ -104,18 +104,22 @@ jobs:
 
           RESPONSE=$(cat /tmp/api_response.json)
 
+          echo "=== RAW RESPONSE (for debugging) ==="
+          echo "$RESPONSE" | jq .
+          echo "===================================="
+
           # Responses API: output[0].content[0].text
           # Fallback to chat completions format in case endpoint behaves differently
           DIAGRAM=$(echo "$RESPONSE" | jq -r '
             .output[0].content[0].text //
-            .output[0].content //
+            .output[0].content[0] //
+            .output[0].text //
             .choices[0].message.content //
             empty
           ')
 
           if [ -z "$DIAGRAM" ]; then
-            echo "ERROR: No diagram content returned. Response:"
-            echo "$RESPONSE" | jq .
+            echo "ERROR: Could not parse diagram from response above."
             exit 1
           fi
 

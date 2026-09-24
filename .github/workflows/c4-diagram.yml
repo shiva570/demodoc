@@ -91,23 +91,31 @@ jobs:
             }')
 
           # Determine the correct endpoint path
-          # Azure AI Foundry (serverless / managed inference) uses /chat/completions
-          # Azure OpenAI uses /chat/completions?api-version=...
           if echo "$AZURE_AI_FOUNDRY_ENDPOINT" | grep -q "openai.azure.com"; then
             API_URL="${AZURE_AI_FOUNDRY_ENDPOINT}/chat/completions?api-version=2024-05-01-preview"
           else
             API_URL="${AZURE_AI_FOUNDRY_ENDPOINT}/chat/completions"
           fi
 
-          RESPONSE=$(echo "$PAYLOAD" | curl -sf "$API_URL" \
+          echo "Calling: $API_URL"
+          echo "Model:   $AZURE_AI_MODEL"
+
+          # Use -w to capture HTTP status separately; drop -f so body is always printed
+          HTTP_STATUS=$(echo "$PAYLOAD" | curl -s -o /tmp/api_response.json -w "%{http_code}" "$API_URL" \
             -H "Authorization: Bearer $AZURE_AI_FOUNDRY_TOKEN" \
             -H "Content-Type: application/json" \
             -d @-)
 
-          if [ $? -ne 0 ]; then
-            echo "ERROR: Failed to call Azure AI Foundry endpoint: $API_URL"
+          echo "HTTP status: $HTTP_STATUS"
+
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "ERROR: API returned HTTP $HTTP_STATUS"
+            echo "Response body:"
+            cat /tmp/api_response.json | jq . 2>/dev/null || cat /tmp/api_response.json
             exit 1
           fi
+
+          RESPONSE=$(cat /tmp/api_response.json)
 
           DIAGRAM=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
 

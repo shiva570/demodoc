@@ -52,10 +52,8 @@ jobs:
       - name: Generate C4 diagram via Azure AI Foundry
         env:
           AZURE_AI_FOUNDRY_TOKEN: ${{ secrets.AZURE_AI_FOUNDRY_TOKEN }}
-          AZURE_AI_FOUNDRY_ENDPOINT: ${{ secrets.AZURE_AI_FOUNDRY_ENDPOINT }}
           AZURE_AI_MODEL: "gpt-5-mini"
-          # services.ai.azure.com uses /models/chat/completions with this api-version
-          AZURE_API_VERSION: "2024-05-01-preview"
+          API_URL: "https://testing0121.services.ai.azure.com/openai/v1/responses"
         run: |
           CONTEXT=$(cat /tmp/context.txt)
 
@@ -78,23 +76,19 @@ jobs:
           Codebase:
           $CONTEXT"
 
-          # Build the JSON payload
+          # Responses API payload (input instead of messages)
           PAYLOAD=$(jq -n \
             --arg model "$AZURE_AI_MODEL" \
             --arg prompt "$FULL_PROMPT" \
             '{
               model: $model,
-              messages: [{role: "user", content: $prompt}],
-              max_tokens: 2000
+              input: $prompt,
+              max_output_tokens: 2000
             }')
-
-          # services.ai.azure.com uses /models/chat/completions (not /chat/completions)
-          API_URL="${AZURE_AI_FOUNDRY_ENDPOINT}/models/chat/completions?api-version=${AZURE_API_VERSION}"
 
           echo "Calling: $API_URL"
           echo "Model:   $AZURE_AI_MODEL"
 
-          # Use -w to capture HTTP status separately; drop -f so body is always printed
           HTTP_STATUS=$(echo "$PAYLOAD" | curl -s -o /tmp/api_response.json -w "%{http_code}" "$API_URL" \
             -H "Authorization: Bearer $AZURE_AI_FOUNDRY_TOKEN" \
             -H "Content-Type: application/json" \
@@ -104,14 +98,20 @@ jobs:
 
           if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
             echo "ERROR: API returned HTTP $HTTP_STATUS"
-            echo "Response body:"
             cat /tmp/api_response.json | jq . 2>/dev/null || cat /tmp/api_response.json
             exit 1
           fi
 
           RESPONSE=$(cat /tmp/api_response.json)
 
-          DIAGRAM=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
+          # Responses API: output[0].content[0].text
+          # Fallback to chat completions format in case endpoint behaves differently
+          DIAGRAM=$(echo "$RESPONSE" | jq -r '
+            .output[0].content[0].text //
+            .output[0].content //
+            .choices[0].message.content //
+            empty
+          ')
 
           if [ -z "$DIAGRAM" ]; then
             echo "ERROR: No diagram content returned. Response:"
